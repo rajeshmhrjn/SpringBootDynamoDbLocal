@@ -3,6 +3,7 @@ package com.rm.sbddl.config;
 import com.amazonaws.services.dynamodbv2.local.main.ServerRunner;
 import com.amazonaws.services.dynamodbv2.local.server.DynamoDBProxyServer;
 import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -17,7 +18,12 @@ import java.net.URI;
 @Configuration
 public class DynamoDbConfig {
 
-    private static final String PORT = "8000";
+    @Value("${dynamodb.local.port}")
+    private String port;
+
+    @Value("${dynamodb.local.db-path}")
+    private String dbPath;
+
     private static final String TABLE_NAME = "Products";
 
     private DynamoDBProxyServer server;
@@ -28,7 +34,7 @@ public class DynamoDbConfig {
         startEmbeddedDynamoDB();
 
         DynamoDbClient client = DynamoDbClient.builder()
-                .endpointOverride(URI.create("http://localhost:" + PORT))
+                .endpointOverride(URI.create("http://localhost:" + port))
                 .region(Region.US_EAST_1)
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create("fakeKey", "fakeSecret")
@@ -49,11 +55,15 @@ public class DynamoDbConfig {
     private void startEmbeddedDynamoDB() throws Exception {
         System.setProperty("sqlite4java.library.path", "target/dynamodb-local-libs");
 
-        server = ServerRunner.createServerFromCommandLineArgs(
-                new String[]{"-inMemory", "-port", PORT}
-        );
+        String[] args = (dbPath == null || dbPath.isBlank())
+                ? new String[]{"-inMemory", "-port", port}
+                : new String[]{"-dbPath", dbPath, "-port", port};
+
+        server = ServerRunner.createServerFromCommandLineArgs(args);
         server.start();
-        System.out.println("✅ DynamoDB Local started on port " + PORT);
+
+        String storageMode = (dbPath == null || dbPath.isBlank()) ? "in-memory" : "persistent at " + dbPath;
+        System.out.println("✅ DynamoDB Local started on port " + port + " (" + storageMode + ")");
     }
 
     private void createTableIfNotExists(DynamoDbClient client) {

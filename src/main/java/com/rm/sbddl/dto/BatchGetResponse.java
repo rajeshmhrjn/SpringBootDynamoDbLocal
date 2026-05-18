@@ -1,4 +1,6 @@
-package com.rm.sbddl.model;
+package com.rm.sbddl.dto;
+
+import com.rm.sbddl.model.Product;
 
 import java.util.List;
 

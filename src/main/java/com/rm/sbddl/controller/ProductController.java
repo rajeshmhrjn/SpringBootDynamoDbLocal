@@ -1,9 +1,9 @@
 package com.rm.sbddl.controller;
 
 
-import com.rm.sbddl.model.BatchGetRequest;
-import com.rm.sbddl.model.BatchGetResponse;
-import com.rm.sbddl.model.BatchResult;
+import com.rm.sbddl.dto.BatchGetRequest;
+import com.rm.sbddl.dto.BatchGetResponse;
+import com.rm.sbddl.dto.BatchResult;
 import com.rm.sbddl.model.Product;
 import com.rm.sbddl.repository.ProductBatchRepository;
 import com.rm.sbddl.repository.ProductRepository;
@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/products")

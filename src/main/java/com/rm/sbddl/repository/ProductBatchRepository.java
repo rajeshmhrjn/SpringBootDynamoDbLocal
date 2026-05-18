@@ -1,7 +1,7 @@
 package com.rm.sbddl.repository;
 
 
-import com.rm.sbddl.model.BatchResult;
+import com.rm.sbddl.dto.BatchResult;
 import com.rm.sbddl.model.Product;
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.*;
