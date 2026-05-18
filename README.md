@@ -12,6 +12,7 @@ No AWS account required — the database starts inside the JVM alongside the app
 | Embedded DynamoDB | DynamoDB Local 2.5.2 started programmatically via `ServerRunner` |
 | AWS SDK v2 | Low-level `DynamoDbClient` + high-level `DynamoDbEnhancedClient` |
 | Table lifecycle | Auto-create table on startup, auto-stop server on shutdown (`@PreDestroy`) |
+| Conditional persistence | Switches between in-memory and file-based storage via a single property |
 | CRUD REST API | Full create / read / update / delete over HTTP |
 | Batch operations | Batch write (25-item limit), batch read (100-item limit), batch update, batch delete |
 | Chunking/partitioning | Helper that splits large lists to respect DynamoDB's per-request limits |
@@ -43,11 +44,12 @@ src/main/java/com/rm/sbddl/
 │                                             #   wires DynamoDbClient + DynamoDbEnhancedClient
 ├── controller/
 │   └── ProductController.java                # REST endpoints for CRUD + batch operations
-├── model/
-│   ├── Product.java                          # DynamoDB-mapped entity (@DynamoDbBean)
+├── dto/
 │   ├── BatchGetRequest.java                  # Request record for batch-get endpoint
 │   ├── BatchGetResponse.java                 # Response record with found/missing breakdown
 │   └── BatchResult.java                      # Generic wrapper: succeeded + failed lists
+├── model/
+│   └── Product.java                          # DynamoDB-mapped entity (@DynamoDbBean)
 └── repository/
     ├── ProductRepository.java                # Single-item CRUD via DynamoDbEnhancedClient
     └── ProductBatchRepository.java           # Batch CRUD with automatic chunking
@@ -58,16 +60,25 @@ src/main/java/com/rm/sbddl/
 ## Key Concepts Learned
 
 ### 1. Embedded DynamoDB Local
-`DynamoDbConfig` starts the local server programmatically before creating the AWS client:
+`DynamoDbConfig` starts the local server programmatically before creating the AWS client.  
+The storage mode is chosen at startup based on the `dynamodb.local.db-path` property:
 
 ```java
 // target/dynamodb-local-libs must contain the DynamoDBLocal JAR (copied by maven-dependency-plugin)
 System.setProperty("sqlite4java.library.path", "target/dynamodb-local-libs");
-server = ServerRunner.createServerFromCommandLineArgs(new String[]{"-inMemory", "-port", "8000"});
+
+String[] args = (dbPath == null || dbPath.isBlank())
+        ? new String[]{"-inMemory", "-port", port}
+        : new String[]{"-dbPath", dbPath, "-port", port};
+
+server = ServerRunner.createServerFromCommandLineArgs(args);
 server.start();
 ```
 
-The `-inMemory` flag means **all data is lost when the app stops** — perfect for local dev/testing.
+| `dynamodb.local.db-path` | Startup flag | Behaviour |
+|---|---|---|
+| blank / not set | `-inMemory` | All data is lost when the app stops |
+| a valid directory path | `-dbPath <path>` | Data is written to disk and **survives restarts** |
 
 ### 2. Fake AWS Credentials for Local Development
 DynamoDB Local accepts any non-empty credential values:
@@ -127,7 +138,7 @@ This is acceptable here for simplicity, but in production it is expensive and sh
 
 The application:
 1. Copies the DynamoDB Local JAR to `target/dynamodb-local-libs/`
-2. Starts DynamoDB Local in-memory on **port 8000**
+2. Starts DynamoDB Local on **port 8000** (in-memory or persistent — see [Configuration](#configuration))
 3. Creates the `Products` table automatically
 4. Starts the Spring Boot server on **port 8080**
 
@@ -201,10 +212,19 @@ DELETE /api/products/batch
 ```properties
 spring.application.name=SpringBootDynamoDbLocal
 server.port=8080
+
+# DynamoDB Local settings
+dynamodb.local.port=8000
+
+# Set a directory path to persist data across restarts.
+# Leave blank (or remove the property) to run fully in-memory.
+dynamodb.local.db-path=${user.home}/dynamodb-local-data
+
 logging.level.com.rm.sbddl=DEBUG
 ```
 
-DynamoDB Local port (`8000`) is configured as a constant in `DynamoDbConfig.java`.
+Both `dynamodb.local.port` and `dynamodb.local.db-path` are injected into `DynamoDbConfig` via `@Value`.  
+The `${user.home}/dynamodb-local-data` default expands to your home directory; DynamoDB Local will create the directory if it does not exist.
 
 ---
 
@@ -226,10 +246,11 @@ which is where the SQLite native library loader looks at startup.
 
 ## Notes / Gotchas
 
-- **Data is not persisted** — the `-inMemory` flag means the database resets every time the app restarts.
+- **Persistence is opt-in** — by default `dynamodb.local.db-path` points to `~/dynamodb-local-data`, so data survives restarts. Set the property to blank to switch back to in-memory mode.
 - **No real AWS credentials needed** — any non-empty key/secret works with DynamoDB Local.
 - **Jetty conflict** — DynamoDB Local embeds Jetty internally. The `pom.xml` explicitly includes `jetty-ee10-servlet` and re-adds `spring-boot-starter-tomcat` to prevent classpath conflicts.
 - **Circular dependency avoided** — the embedded server is started inside the `@Bean` method rather than `@PostConstruct` to keep Spring's initialization order predictable.
+- **DTO vs model packages** — request/response types (`BatchGetRequest`, `BatchGetResponse`, `BatchResult`) live in `com.rm.sbddl.dto`; the DynamoDB entity (`Product`) lives in `com.rm.sbddl.model`.
 
 ---
 
